@@ -1,0 +1,140 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escáner de inventario</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      padding: 20px;
+      text-align: center;
+      color: #222;
+    }
+    .contenedor {
+      max-width: 480px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 14px;
+    }
+    button, select {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      font-size: 17px;
+      border-radius: 8px;
+    }
+    button {
+      border: 0;
+      background: #1769d2;
+      color: white;
+    }
+    #lector {
+      width: 100%;
+      margin-top: 15px;
+    }
+    #estado {
+      overflow-wrap: anywhere;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="contenedor">
+    <h2>Escáner de inventario</h2>
+
+    <label for="destino">¿Dónde registrarás el código?</label>
+    <select id="destino">
+      <option value="reposicion">Reposiciones</option>
+      <option value="venta">Ventas</option>
+    </select>
+
+    <button id="abrir" onclick="abrirCamara()">Abrir cámara</button>
+    <div id="lector"></div>
+    <p id="estado">Selecciona la operación y abre la cámara.</p>
+    <button onclick="volver()">Volver al inventario</button>
+  </div>
+
+  <script>
+    const APP_URL =
+      "https://script.google.com/macros/s/AKfycbz-hQ4PUGOBj5xsv8EeiDjEtxZWzKIOOvMjg3uayXj6tuVV-8LBalKdSmuOS9aZlMP5/exec";
+
+    let escaner = null;
+    let procesando = false;
+
+    async function abrirCamara() {
+      const estado = document.getElementById("estado");
+
+      if (!window.Html5Qrcode) {
+        estado.textContent = "No se pudo cargar el lector. Recarga la página.";
+        return;
+      }
+
+      try {
+        document.getElementById("abrir").disabled = true;
+        escaner = new Html5Qrcode("lector");
+        await escaner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 150 } },
+          codigoLeido,
+          () => {}
+        );
+        estado.textContent = "Cámara activa. Apunta al código de barras.";
+      } catch (error) {
+        document.getElementById("abrir").disabled = false;
+        estado.textContent =
+          "No se pudo abrir la cámara. Permite el acceso en Safari y vuelve a intentarlo.";
+      }
+    }
+
+    async function codigoLeido(codigo) {
+      if (procesando) return;
+      procesando = true;
+
+      const estado = document.getElementById("estado");
+      estado.textContent = "Código leído: " + codigo + ". Enviando...";
+
+      try {
+        if (escaner) await escaner.stop();
+      } catch (e) {}
+
+      const destino = document.getElementById("destino").value;
+
+      // Devuelve el código a la página de Apps Script que abrió el escáner.
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          tipo: "CODIGO_ESCANEADO",
+          codigo: codigo,
+          destino: destino
+        }, "*");
+
+        estado.textContent = "Código enviado a la pantalla anterior.";
+      } else {
+        // Si se abrió directamente, intenta regresar el resultado mediante la URL.
+        const url = new URL(APP_URL);
+        url.searchParams.set("codigoEscaneado", codigo);
+        url.searchParams.set("destino", destino);
+        estado.textContent =
+          "Código leído. Abre el inventario original para recibirlo: " + codigo;
+        const enlace = document.createElement("a");
+        enlace.href = url.toString();
+        enlace.textContent = "Abrir Apps Script";
+        enlace.style.display = "block";
+        enlace.style.marginTop = "16px";
+        estado.appendChild(document.createElement("br"));
+        estado.appendChild(enlace);
+      }
+    }
+
+    function volver() {
+      window.close();
+      document.getElementById("estado").textContent =
+        "Puedes volver a la pestaña anterior del inventario.";
+    }
+  </script>
+</body>
+</html>
